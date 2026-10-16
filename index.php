@@ -1,184 +1,232 @@
 
-<?php
-require_once __DIR__ . '/conexion.php';
-require_once __DIR__ . '/funciones.php';
-require_once __DIR__ . '/auth.php';
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Control - Sistema de Pedidos</title>
 
-exigirAcceso('inicio');
-$usuarioActual = usuarioActual();
+    <style>
+        * {
+            box-sizing: border-box;
+        }
 
-// Funcion para consultar un total de forma segura
-function obtenerTotal($conexion, $sql) {
-    $resultado = $conexion->query($sql);
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f6f9;
+            color: #333;
+        }
 
-    if (!$resultado) {
-        error_log("Error SQL: " . $conexion->error);
-        return 0;
-    }
+        header {
+            background: #263746;
+            color: white;
+            padding: 22px;
+            text-align: center;
+        }
 
-    $fila = $resultado->fetch_assoc();
-    return $fila['total'] ?? 0;
-}
+        main {
+            max-width: 1100px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
 
-// Estadisticas generales
-$totalPedidos = obtenerTotal(
-    $conexion,
-    "SELECT COUNT(*) AS total
-     FROM Pedido_General
-     WHERE estado <> 'Devuelto'"
-);
+        h2 {
+            color: #263746;
+        }
 
-$totalVendido = obtenerTotal(
-    $conexion,
-    "SELECT IFNULL(SUM(subtotal), 0) AS total
-     FROM v_detalle_neto"
-);
+        .bienvenida {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+        }
 
-$totalClientes = obtenerTotal(
-    $conexion,
-    "SELECT COUNT(*) AS total FROM Cliente"
-);
+        .tarjetas-stats,
+        .tarjetas {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 18px;
+            margin: 22px 0 35px;
+        }
 
-// Ingrediente con menor cantidad
-$resultadoIngrediente = $conexion->query(
-    "SELECT nombre, cantidad_actual, unidad_medida
-     FROM Ingrediente
-     ORDER BY cantidad_actual ASC
-     LIMIT 1"
-);
+        .stat,
+        .tarjeta {
+            background: white;
+            padding: 22px;
+            border-radius: 10px;
+            box-shadow: 0 3px 10px #00000012;
+        }
 
-$ingredienteBajo = $resultadoIngrediente
-    ? $resultadoIngrediente->fetch_assoc()
-    : null;
+        .stat {
+            border-left: 5px solid #168aad;
+        }
 
-// Producto mas vendido
-$resultadoProducto = $conexion->query(
-    "SELECT p.nombre, SUM(d.cantidad) AS total_vendido
-     FROM v_detalle_neto d
-     INNER JOIN Producto p
-         ON d.id_producto = p.id_producto
-     GROUP BY p.id_producto, p.nombre
-     ORDER BY total_vendido DESC
-     LIMIT 1"
-);
+        .numero {
+            font-size: 27px;
+            font-weight: bold;
+            color: #168aad;
+            margin-bottom: 10px;
+        }
 
-$productoMasVendido = $resultadoProducto
-    ? $resultadoProducto->fetch_assoc()
-    : null;
+        .etiqueta,
+        .descripcion-tarjeta {
+            color: #666;
+            font-size: 14px;
+        }
 
-$titulo = 'Inicio';
-$mostrarBanner = true;
+        .tarjeta {
+            color: #263746;
+            text-decoration: none;
+            transition: transform 0.2s;
+        }
 
-include __DIR__ . '/menu.php';
-?>
+        .tarjeta:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 5px 15px #00000020;
+        }
 
-<h2>Panel de Control</h2>
+        .titulo-tarjeta {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
 
-<p class="bienvenida">
-    Bienvenido/a,
-    <?php echo h($usuarioActual['nombre'] ?? 'Usuario'); ?>
-    (<?php echo h($usuarioActual['rol'] ?? ''); ?>)
-</p>
+        footer {
+            background: #263746;
+            color: white;
+            text-align: center;
+            padding: 18px;
+            margin-top: 40px;
+        }
+    </style>
+</head>
 
-<?php if (esSupervisor()) { ?>
+<body>
 
-<div class="tarjetas-stats">
+<header>
+    <h1>Sistema de Pedidos</h1>
+    <p>Panel de Control</p>
+</header>
 
-    <div class="stat">
-        <div class="numero">
-            <?php echo (int) $totalPedidos; ?>
+<main>
+    <h2>Panel de Control</h2>
+
+    <p class="bienvenida">
+        Bienvenido/a al Sistema de Pedidos
+    </p>
+
+    <div class="tarjetas-stats">
+        <div class="stat">
+            <div class="numero" id="pedidos">0</div>
+            <div class="etiqueta">Pedidos Realizados</div>
         </div>
-        <div class="etiqueta">Pedidos Realizados</div>
+
+        <div class="stat">
+            <div class="numero" id="ventas">0.00 Bs</div>
+            <div class="etiqueta">Total Vendido</div>
+        </div>
+
+        <div class="stat">
+            <div class="numero" id="clientes">0</div>
+            <div class="etiqueta">Clientes Registrados</div>
+        </div>
+
+        <div class="stat">
+            <div class="numero">-</div>
+            <div class="etiqueta">Stock más bajo</div>
+        </div>
+
+        <div class="stat">
+            <div class="numero">0</div>
+            <div class="etiqueta">Producto más vendido</div>
+        </div>
     </div>
 
-    <div class="stat">
-        <div class="numero">
-            <?php echo number_format((float) $totalVendido, 2, '.', ','); ?>
-        </div>
-        <div class="etiqueta">Total Vendido (Bs)</div>
+    <h2>Accesos Rápidos</h2>
+
+    <div class="tarjetas">
+        <a href="clientes.html" class="tarjeta">
+            <div class="titulo-tarjeta">Clientes</div>
+            <div class="descripcion-tarjeta">
+                Registrar y administrar clientes
+            </div>
+        </a>
+
+        <a href="empleados.html" class="tarjeta">
+            <div class="titulo-tarjeta">Empleados</div>
+            <div class="descripcion-tarjeta">
+                Personal que atiende pedidos
+            </div>
+        </a>
+
+        <a href="proveedores.html" class="tarjeta">
+            <div class="titulo-tarjeta">Proveedores</div>
+            <div class="descripcion-tarjeta">
+                Administrar proveedores
+            </div>
+        </a>
+
+        <a href="ingredientes.html" class="tarjeta">
+            <div class="titulo-tarjeta">Ingredientes</div>
+            <div class="descripcion-tarjeta">
+                Controlar el inventario
+            </div>
+        </a>
+
+        <a href="productos.html" class="tarjeta">
+            <div class="titulo-tarjeta">Productos</div>
+            <div class="descripcion-tarjeta">
+                Hamburguesas y limonada
+            </div>
+        </a>
+
+        <a href="recetas.html" class="tarjeta">
+            <div class="titulo-tarjeta">Recetas</div>
+            <div class="descripcion-tarjeta">
+                Ingredientes de cada producto
+            </div>
+        </a>
+
+        <a href="abastecimiento.html" class="tarjeta">
+            <div class="titulo-tarjeta">Abastecimiento</div>
+            <div class="descripcion-tarjeta">
+                Registrar compras de ingredientes
+            </div>
+        </a>
+
+        <a href="gastos.html" class="tarjeta">
+            <div class="titulo-tarjeta">Gastos</div>
+            <div class="descripcion-tarjeta">
+                Servicios, fletes y otros costos
+            </div>
+        </a>
+
+        <a href="pedidos.html" class="tarjeta">
+            <div class="titulo-tarjeta">Pedidos</div>
+            <div class="descripcion-tarjeta">
+                Registrar y consultar ventas
+            </div>
+        </a>
+
+        <a href="finanzas.html" class="tarjeta">
+            <div class="titulo-tarjeta">Finanzas</div>
+            <div class="descripcion-tarjeta">
+                Margen bruto y equilibrio
+            </div>
+        </a>
+
+        <a href="reportes.html" class="tarjeta">
+            <div class="titulo-tarjeta">Reportes</div>
+            <div class="descripcion-tarjeta">
+                Ventas, inventario y compras
+            </div>
+        </a>
     </div>
+</main>
 
-    <div class="stat">
-        <div class="numero">
-            <?php echo (int) $totalClientes; ?>
-        </div>
-        <div class="etiqueta">Clientes Registrados</div>
-    </div>
+<footer>
+    Sistema de Pedidos | Panel de Control
+</footer>
 
-    <div class="stat">
-        <div class="numero">
-            <?php
-            echo $ingredienteBajo
-                ? h($ingredienteBajo['cantidad_actual'] . ' ' .
-                    $ingredienteBajo['unidad_medida'])
-                : '-';
-            ?>
-        </div>
-        <div class="etiqueta">
-            <?php
-            echo $ingredienteBajo
-                ? 'Stock mas bajo: ' . h($ingredienteBajo['nombre'])
-                : 'Sin ingredientes';
-            ?>
-        </div>
-    </div>
-
-    <div class="stat">
-        <div class="numero">
-            <?php
-            echo $productoMasVendido
-                ? (int) $productoMasVendido['total_vendido']
-                : 0;
-            ?>
-        </div>
-        <div class="etiqueta">
-            <?php
-            echo $productoMasVendido
-                ? 'Mas vendido: ' . h($productoMasVendido['nombre'])
-                : 'Sin ventas aun';
-            ?>
-        </div>
-    </div>
-
-</div>
-
-<?php } ?>
-
-<h2>Accesos Rapidos</h2>
-
-<div class="tarjetas">
-
-<?php
-$accesos = [
-    ['clientes', 'Clientes', 'Registrar y administrar clientes', 'clientes.php'],
-    ['empleados', 'Empleados', 'Personal que atiende pedidos', 'empleados.php'],
-    ['proveedores', 'Proveedores', 'Quienes suministran ingredientes', 'proveedores.php'],
-    ['ingredientes', 'Ingredientes', 'Inventario de materia prima', 'ingredientes.php'],
-    ['productos', 'Productos', 'Hamburguesas y limonada a la venta', 'productos.php'],
-    ['recetas', 'Recetas', 'Ingredientes que lleva cada producto', 'recetas.php'],
-    ['abastecimiento', 'Abastecimiento', 'Registrar compras de ingredientes', 'abastecimiento.php'],
-    ['gastos', 'Gastos', 'Servicios, fletes y otros costos fijos', 'gastos.php'],
-    ['pedidos', 'Pedidos', 'Registrar y ver ventas', 'pedidos.php'],
-    ['finanzas', 'Finanzas', 'Margen bruto, equilibrio e inversion', 'finanzas.php'],
-    ['reportes', 'Reportes', 'Ventas, inventario y compras. Imprimir y Excel', 'reportes.php']
-];
-
-foreach ($accesos as $acceso) {
-    if (puede($acceso[0], 'ver')) {
-?>
-    <a href="<?php echo h($acceso[3]); ?>" class="tarjeta">
-        <div class="titulo-tarjeta">
-            <?php echo h($acceso[1]); ?>
-        </div>
-        <div class="descripcion-tarjeta">
-            <?php echo h($acceso[2]); ?>
-        </div>
-    </a>
-<?php
-    }
-}
-?>
-
-</div>
-
-<?php include __DIR__ . '/pie.php'; ?>
+</body>
+</html>
